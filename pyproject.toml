@@ -1,0 +1,22 @@
+[project]
+name = "neuralhub"
+version = "0.1.0"
+description = "NeuralCore framework for AI applications"
+readme = "README.md"
+authors = [
+    { name = "Abyss-c0re", email = "dev@abyss-core.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "neuralcore",
+    "websockets>=16.0",
+]
+
+[tool.uv.sources]
+neuralcore = { git = "https://github.com/Abyss-c0re/NeuralCore.git" }
+
+[tool.pyright]  
+venvPath = "."     
+venv = ".venv"
+extraPaths = ["../NeuralCore"]
+
