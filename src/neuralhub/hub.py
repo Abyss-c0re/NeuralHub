@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from neuralcore import Agent, Logger
+from neuralcore.tasks.task import Task
 
 from .core.identity import AgentIdentity
 from .core.message import HubMessage, MessageType
@@ -28,13 +29,19 @@ class NeuralHub:
     """
     Modern, composable multi-agent hub.
 
-    You can construct it with any combination of transports:
-
+    Transports (add any mix):
         hub = NeuralHub()
-        hub.add_transport(LocalTransport())
+        hub.add_transport(LocalTransport())                 # always present
         hub.add_transport(WebSocketTransport(hub_port=8770))
 
-    Or use the convenience `AgentHub` subclass for the classic experience.
+    Local-only cooperation (recommended for same-process swarms):
+        alpha = hub.get_local_agent("alpha")
+        # or the high-level helpers:
+        await hub.delegate_local_task("alpha", "beta", "do X")
+        await hub.orchestrate_local_split("alpha", "Complex goal...", ["beta", "gamma"])
+
+    These use Agent.request_agent + TaskManager (plan + dispatch_parallel) under the hood.
+    WebSocket paths are completely untouched and continue to work for remote agents.
     """
 
     def __init__(self, transports: Optional[List[Transport]] = None):
@@ -172,6 +179,162 @@ class NeuralHub:
             "agent_id": agent_id,
             "name": getattr(agent, "name", agent_id),
             "status": getattr(getattr(agent, "state", None), "status", "unknown"),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Local-only cooperation (core methods + TaskManager task splitting)
+    # These paths never touch WebSocketTransport or any network layer.
+    # ------------------------------------------------------------------ #
+
+    def get_local_agent(self, agent_id: str) -> Optional[Agent]:
+        """
+        Return the live in-process Agent object for a locally registered agent.
+
+        This is the gateway for direct core-method cooperation (request_agent,
+        task_manager, etc.) between agents that live in the same Python process.
+        """
+        return self.get_agent(agent_id)
+
+    def list_local_agents(self) -> Dict[str, Agent]:
+        """Return {agent_id: live Agent} for every locally-registered agent."""
+        return self.agents
+
+    async def delegate_local_task(
+        self,
+        requester_id: str,
+        target_id: str,
+        description: str,
+        expected_outcome: str = "",
+        timeout: Optional[float] = None,
+        drain_context: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        High-level helper for pure-local task delegation.
+
+        Uses the agent's native cooperation primitives:
+          - requester.request_agent(target, Task)
+          - target.task_manager.execute_delegated(task)
+          - requester.await_task_completion(task)
+
+        No HubMessage, no transports, no WebSockets — direct object calls.
+        Both agents must be registered locally via register_agent().
+        """
+        requester = self.get_local_agent(requester_id)
+        target = self.get_local_agent(target_id)
+
+        if requester is None:
+            logger.error(f"[NeuralHub] delegate_local_task: unknown requester '{requester_id}'")
+            return {"status": "error", "error": f"requester not found: {requester_id}"}
+        if target is None:
+            logger.error(f"[NeuralHub] delegate_local_task: unknown target '{target_id}'")
+            return {"status": "error", "error": f"target not found: {target_id}"}
+
+        task = Task(
+            description=description,
+            expected_outcome=expected_outcome or description,
+        )
+
+        # Core NeuralCore cooperation path (the reason we have this feature)
+        await requester.request_agent(
+            target_agent=target,
+            task=task,
+            timeout=timeout,
+            drain_context=drain_context,
+        )
+
+        # Target executes using its own TaskManager (full tool use, validation, etc.)
+        await target.task_manager.execute_delegated(task)
+
+        # Requester waits via the task's completion event
+        result = await requester.await_task_completion(task, timeout=timeout)
+
+        logger.info(
+            f"[NeuralHub] Local delegation complete: {requester_id} → {target_id} "
+            f"(task {task.task_id[:8]}, status={result.get('status')})"
+        )
+        return result
+
+    async def orchestrate_local_split(
+        self,
+        orchestrator_id: str,
+        goal: str,
+        participant_ids: Optional[List[str]] = None,
+        timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        End-to-end local multi-agent orchestration using TaskManager for splitting.
+
+        1. The orchestrator's TaskManager.plan() decomposes `goal` into sub-tasks.
+        2. Those tasks are dispatched (respecting dependencies) via
+           orchestrator.task_manager.dispatch_parallel(...) to the participant agents.
+        3. dispatch_parallel internally uses request_agent + execute_delegated.
+
+        This is the "local agent without websockets + task manager splits tasks" path.
+
+        If participant_ids is None, all other locally registered agents are used.
+        """
+        orchestrator = self.get_local_agent(orchestrator_id)
+        if orchestrator is None:
+            return {
+                "status": "error",
+                "error": f"orchestrator '{orchestrator_id}' is not registered locally",
+            }
+
+        # Build participant list (live Agent objects)
+        if participant_ids:
+            participants = [
+                a for a in (self.get_local_agent(pid) for pid in participant_ids) if a is not None
+            ]
+        else:
+            participants = [
+                a
+                for aid, a in self.list_local_agents().items()
+                if aid != orchestrator_id and a is not None
+            ]
+
+        if not participants:
+            return {"status": "error", "error": "No valid participant agents for dispatch"}
+
+        # Give the orchestrator the goal so its planner sees it
+        orchestrator.state.task = goal
+        orchestrator.current_task = goal
+
+        # Phase 1: Planning (TaskManager uses LLM to split the goal)
+        logger.info(f"[NeuralHub] orchestrate_local_split: planning goal for '{orchestrator_id}'")
+        async for event, _payload in orchestrator.task_manager.plan():
+            if event in ("planning_complete", "planning_fallback"):
+                break
+
+        # The plan() method populates orchestrator.state.tasks
+        tasks: List[Task] = list(getattr(orchestrator.state, "tasks", []))
+        if not tasks:
+            # Graceful single-task fallback
+            tasks = [Task(description=goal, expected_outcome="Completed goal")]
+
+        logger.info(
+            f"[NeuralHub] orchestrate_local_split: {len(tasks)} task(s) → "
+            f"{len(participants)} local agent(s)"
+        )
+
+        # Phase 2: Parallel dispatch with dependency handling (core path)
+        dispatch_events: List[tuple] = []
+        async for ev in orchestrator.task_manager.dispatch_parallel(
+            tasks=tasks, agents=participants, timeout=timeout
+        ):
+            dispatch_events.append(ev)
+
+        completed = sum(1 for e in dispatch_events if e[0] == "task_completed")
+        failed = sum(1 for e in dispatch_events if e[0] == "task_failed")
+
+        return {
+            "status": "ok",
+            "orchestrator": orchestrator_id,
+            "goal": goal,
+            "tasks_planned": len(tasks),
+            "participants": [p.agent_id for p in participants],
+            "tasks_completed": completed,
+            "tasks_failed": failed,
+            "dispatch_events": [e[0] for e in dispatch_events],
         }
 
     async def start(self) -> None:
