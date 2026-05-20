@@ -936,7 +936,6 @@ dependencies = [
     { name = "rapidfuzz" },
     { name = "scikit-learn" },
     { name = "tokenizers" },
-    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -958,7 +957,6 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.14.5" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "tokenizers", specifier = ">=0.23.1" },
-    { name = "websockets", specifier = ">=16.0" },
 ]
 provides-extras = ["dev"]
 
@@ -968,10 +966,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "neuralcore" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "neuralcore", editable = "../NeuralCore" }]
+requires-dist = [
+    { name = "neuralcore", editable = "../NeuralCore" },
+    { name = "websockets", specifier = ">=16.0" },
+]
 
 [[package]]
 name = "numpy"

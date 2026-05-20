@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "neuralcore @ git+https://github.com/Abyss-c0re/NeuralCore.git",
+    "websockets>=16.0",
 ]
 
 [tool.uv.sources]

@@ -17,7 +17,8 @@ from typing import Any, Callable, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
 
-from neuralcore import Agent, WebSocketBridge, Logger
+from neuralcore import Agent, Logger
+from ..bridge.websocket import WebSocketBridge
 
 from ..core.identity import AgentIdentity
 from ..core.message import HubMessage, MessageType

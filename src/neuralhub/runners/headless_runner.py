@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional, Tuple
 
-from neuralcore import Agent, WebSocketBridge, Logger
+from neuralcore import Agent, Logger
+from ..bridge.websocket import WebSocketBridge
 
 logger = Logger.get_logger()
 

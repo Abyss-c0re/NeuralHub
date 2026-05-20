@@ -20,10 +20,12 @@ identically in both modes.
 from .hub import AgentHub, NeuralHub
 from .core.identity import AgentIdentity
 from .runners.headless_runner import HeadlessAgentRunner
+from .bridge.websocket import WebSocketBridge
 
 __all__ = [
     "AgentHub",
     "NeuralHub",
     "AgentIdentity",
     "HeadlessAgentRunner",
+    "WebSocketBridge",
 ]
