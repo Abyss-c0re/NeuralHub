@@ -1,23 +1,24 @@
 [project]
 name = "neuralhub"
 version = "0.1.0"
-description = "NeuralCore framework for AI applications"
+description = "Multi-agent coordination Hub for NeuralCore (WebSocket routing, agent registry, inter-agent messaging)"
 readme = "README.md"
 authors = [
     { name = "Abyss-c0re", email = "dev@abyss-core.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
-    "coincurve==20.0.0",
-    "libp2p>=0.2.9",
     "neuralcore",
 ]
 
 [tool.uv.sources]
-neuralcore = { git = "https://github.com/Abyss-c0re/NeuralCore.git" }
+neuralcore = { path = "../NeuralCore", editable = true }
 
-[tool.pyright]  
-venvPath = "."     
+[tool.pyright]
+venvPath = "."
 venv = ".venv"
 extraPaths = ["../NeuralCore"]
 
+[build-system]
+requires = ["uv_build>=0.10.10,<0.11.0"]
+build-backend = "uv_build"
