@@ -263,26 +263,23 @@ class AgentHub(NeuralHub):
         runner_factory: Optional[Callable[..., Any]] = None,
     ) -> Dict[str, bool]:
         """
-        Deploy all registered agents.
+        Deploy all registered agents using the built-in HeadlessAgentRunner
+        (or a custom one via runner_factory).
 
-        If `runner_factory` is supplied it will be used instead of the
-        hard-coded NeuralVoid import. This makes the method usable from
-        other environments.
+        Client applications can still supply their own richer runner if needed.
         """
         if runner_factory is None:
-            raise RuntimeError(
-                "AgentHub.deploy_all() requires a `runner_factory`.\n\n"
-                "NeuralHub deliberately does NOT import from NeuralVoid (a client application).\n"
-                "You must supply your own runner factory, for example:\n\n"
-                "    def my_runner(agent, bridge_port):\n"
-                "        return HeadlessAgentRunner(\n"
-                "            agent=agent,\n"
-                "            websocket_port=bridge_port,\n"
-                "            skip_bridge=True,\n"
-                "            ...\n"
-                "        )\n\n"
-                "    results = await hub.deploy_all(..., runner_factory=my_runner)"
-            )
+            from .runners.headless_runner import HeadlessAgentRunner
+
+            def default_runner(agent, bridge_port):
+                return HeadlessAgentRunner(
+                    agent=agent,
+                    websocket_port=bridge_port,
+                    skip_bridge=True,
+                    app_root=getattr(agent, "app_root", None),
+                )
+
+            runner_factory = default_runner
 
         await self.start()
 

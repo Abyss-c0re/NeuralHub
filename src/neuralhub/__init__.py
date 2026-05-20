@@ -9,9 +9,11 @@ Public API:
 
 from .hub import AgentHub, NeuralHub
 from .core.identity import AgentIdentity
+from .runners.headless_runner import HeadlessAgentRunner
 
 __all__ = [
     "AgentHub",
     "NeuralHub",
     "AgentIdentity",
+    "HeadlessAgentRunner",
 ]
