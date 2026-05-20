@@ -3,14 +3,18 @@ NeuralHub — WebSocket + Local multi-agent coordination layer for NeuralCore.
 
 Supports two equally-first-class modes:
 
-* WebSocket mode (classic): AgentHub gives you the full bridge + central hub server experience.
-* Pure local mode (new): NeuralHub (or AgentHub) + get_local_agent / delegate_local_task /
-  orchestrate_local_split lets agents talk via direct core methods (request_agent,
-  await_task_completion, etc.) and lets TaskManager split goals into sub-tasks that are
-  dispatched with dependency-aware parallelism — zero WebSocket traffic between them.
+* WebSocket mode (classic): AgentHub() gives the full bridge + central hub server (ports 8770+).
+* Pure local mode: NeuralHub() or AgentHub(enable_central_hub=False, enable_agent_bridges=False)
+  — zero listening sockets. Use get_local_agent / delegate_local_task / orchestrate_local_split
+  for direct core-method cooperation + TaskManager task splitting.
 
-You can mix both: local agents use fast direct calls; remote/external agents continue
-to work over the existing WebSocketTransport without any breakage.
+The two flags on AgentHub/WebSocketTransport are independent:
+    enable_central_hub      → controls the main hub server (relay/broadcast/status for external clients)
+    enable_agent_bridges    → controls per-agent WebSocketBridge telemetry servers
+
+Default is both True (classic behavior). Set them False for fully local, zero-network usage.
+Everything else (register_agent, local transport, deploy_all, new cooperation helpers) works
+identically in both modes.
 """
 
 from .hub import AgentHub, NeuralHub

@@ -42,10 +42,16 @@ class WebSocketTransport:
         host: str = "127.0.0.1",
         hub_port: int = 8770,
         bridge_base_port: int = 8771,
+        *,
+        enable_central_hub: bool = True,
+        enable_agent_bridges: bool = True,
     ):
         self.host = host
         self.hub_port = hub_port
         self._bridge_next_port = bridge_base_port
+
+        self.enable_central_hub = enable_central_hub
+        self.enable_agent_bridges = enable_agent_bridges
 
         # identity -> WebSocketBridge
         self.bridges: dict[AgentIdentity, WebSocketBridge] = {}
@@ -153,12 +159,18 @@ class WebSocketTransport:
         return port
 
     async def start_central_hub(self) -> None:
-        """Start the classic hub-level WebSocket server."""
+        """Start the classic hub-level WebSocket server (no-op if disabled)."""
+        if not self.enable_central_hub:
+            logger.info("[WS-Transport] Central hub server disabled (local-only mode)")
+            return
         self._server = await serve(self._hub_handler, self.host, self.hub_port)
         logger.info(f"[WS-Transport] Hub WebSocket server live → ws://{self.host}:{self.hub_port}")
 
     async def start_agent_bridges(self) -> None:
-        """Start all per-agent bridges (classic behavior)."""
+        """Start all per-agent bridges (classic behavior). No-op if disabled."""
+        if not self.enable_agent_bridges:
+            logger.info("[WS-Transport] Per-agent bridges disabled")
+            return
         for ident, bridge in self.bridges.items():
             task = asyncio.create_task(bridge.start(), name=f"bridge_{ident.id}")
             self._bridge_tasks[ident] = task

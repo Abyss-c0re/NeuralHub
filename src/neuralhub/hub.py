@@ -31,17 +31,21 @@ class NeuralHub:
 
     Transports (add any mix):
         hub = NeuralHub()
-        hub.add_transport(LocalTransport())                 # always present
-        hub.add_transport(WebSocketTransport(hub_port=8770))
+        hub.add_transport(LocalTransport())                 # always present (fast path)
+        hub.add_transport(WebSocketTransport(hub_port=8770, enable_central_hub=False))
+
+    Local-only operation (no sockets at all):
+        hub = NeuralHub()                       # only LocalTransport
+        # or
+        hub = AgentHub(enable_central_hub=False, enable_agent_bridges=False)
 
     Local-only cooperation (recommended for same-process swarms):
         alpha = hub.get_local_agent("alpha")
-        # or the high-level helpers:
         await hub.delegate_local_task("alpha", "beta", "do X")
         await hub.orchestrate_local_split("alpha", "Complex goal...", ["beta", "gamma"])
 
     These use Agent.request_agent + TaskManager (plan + dispatch_parallel) under the hood.
-    WebSocket paths are completely untouched and continue to work for remote agents.
+    WebSocket paths remain fully functional when the flags are left at their default (True).
     """
 
     def __init__(self, transports: Optional[List[Transport]] = None):
@@ -370,6 +374,18 @@ class AgentHub(NeuralHub):
 
     It behaves *exactly* like the original monolithic version while being
     built on top of the new modular architecture.
+
+    To run in pure-local mode (no WebSocket listeners at all):
+
+        hub = AgentHub(enable_central_hub=False, enable_agent_bridges=False)
+        hub.register_agent(alpha)
+        hub.register_agent(beta)
+        ...
+        await hub.deploy_all(...)          # or use the new local cooperation helpers
+        # or
+        await hub.orchestrate_local_split("alpha", "Complex multi-agent goal...")
+
+    The central hub server and per-agent bridges are independent toggles.
     """
 
     def __init__(
@@ -377,9 +393,16 @@ class AgentHub(NeuralHub):
         host: str = "127.0.0.1",
         hub_port: int = 8770,
         bridge_base_port: int = 8771,
+        *,
+        enable_central_hub: bool = True,
+        enable_agent_bridges: bool = True,
     ):
         self._ws_transport = WebSocketTransport(
-            host=host, hub_port=hub_port, bridge_base_port=bridge_base_port
+            host=host,
+            hub_port=hub_port,
+            bridge_base_port=bridge_base_port,
+            enable_central_hub=enable_central_hub,
+            enable_agent_bridges=enable_agent_bridges,
         )
         super().__init__(transports=[self._ws_transport])
 
@@ -387,6 +410,8 @@ class AgentHub(NeuralHub):
         self.host = host
         self.hub_port = hub_port
         self.bridges = self._ws_transport.bridges  # for introspection
+        self.enable_central_hub = enable_central_hub
+        self.enable_agent_bridges = enable_agent_bridges
 
         # Compatibility with older tests / code that expected message_log on the hub
         self.message_log: List[Dict[str, Any]] = []
