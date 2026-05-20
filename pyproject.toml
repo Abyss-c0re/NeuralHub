@@ -1,17 +1,19 @@
 [project]
 name = "neuralhub"
 version = "0.1.0"
-description = "Multi-agent coordination Hub for NeuralCore (WebSocket routing, agent registry, inter-agent messaging)"
+description = "WebSocket + Local multi-agent coordination layer for NeuralCore"
 readme = "README.md"
 authors = [
     { name = "Abyss-c0re", email = "dev@abyss-core.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "neuralcore",
+    "neuralcore @ git+https://github.com/Abyss-c0re/NeuralCore.git",
 ]
 
 [tool.uv.sources]
+# When working inside the ProjectNexus monorepo, use the local sibling.
+# Outside (or on CI / `uv pip install`), the git dependency above is used.
 neuralcore = { path = "../NeuralCore", editable = true }
 
 [tool.pyright]

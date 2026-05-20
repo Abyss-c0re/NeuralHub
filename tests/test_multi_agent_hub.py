@@ -32,12 +32,11 @@ import time
 from pathlib import Path
 
 # ── Framework imports ──
-from neuralcore import ConfigLoader, AgentFactory, get_client_factory
+from neuralcore import ConfigLoader, AgentFactory
+from neuralcore.clients.factory import ClientFactory, get_clients
 import neuralcore.utils.config as config_module
 import neuralcore.clients.factory as cfactory_module
 
-# ── Client imports ──
-from neuralvoid.workflows.default_flow import AgentFlow
 from neuralhub import AgentHub
 
 # ── Make sure imports work from project root ──
@@ -76,7 +75,7 @@ async def run_test():
     else:
         # Real server - show first client's url
         try:
-            first_client = list(loader.get_clients().values())[0] if loader.get_clients() else None
+            first_client = list(get_clients().values())[0] if get_clients() else None
             url = getattr(first_client, "base_url", "unknown")
             print(f"[OK] Using REAL LLM server at {url}")
         except Exception:
@@ -112,9 +111,6 @@ async def run_test():
     )
 
     # Register default workflows (chat_tool_loop, goal_driven_loop, etc.)
-    AgentFlow(alpha)
-    AgentFlow(beta)
-
     print(f"[OK] Agent Alpha: {alpha.name} ({alpha.agent_id})")
     print(f"[OK] Agent Beta:  {beta.name} ({beta.agent_id})")
 
@@ -134,7 +130,7 @@ async def run_test():
     await hub.start()
     # Small delay so bridges bind
     await asyncio.sleep(0.5)
-    print(f"[OK] Hub started on ws://127.0.0.1:8770")
+    print("[OK] Hub started on ws://127.0.0.1:8770")
 
     # ──────────────────────────────────────────────────────────────
     # 5. Start BOTH agents in real listening mode (chat_tool_loop).
@@ -189,7 +185,7 @@ async def run_test():
     #    Alpha's LLM must reply to a message that came from Beta (and vice versa).
     # ──────────────────────────────────────────────────────────────
     test_message = "Hello Beta, this is just a friendly hello from Alpha via the hub. No action needed, please reply briefly so I know your LLM is working."
-    print(f"\n>>> [STEP 1] Alpha → Beta (real LLM on server must classify + generate reply)")
+    print("\n>>> [STEP 1] Alpha → Beta (real LLM on server must classify + generate reply)")
     print(f'    "{test_message}"')
 
     ok1 = await hub.send_to_agent(
@@ -222,7 +218,7 @@ async def run_test():
     beta_reply_text = beta_replies[0] if beta_replies else "I got your message."
     reply_back = f"Hi Alpha, friendly hello back from Beta. Just acknowledging your relayed message (no tasks). My LLM reply was: {beta_reply_text[:100]}"
 
-    print(f"\n>>> [STEP 2] Beta → Alpha (real LLM on server must respond to the reply)")
+    print("\n>>> [STEP 2] Beta → Alpha (real LLM on server must respond to the reply)")
     print(f'    "{reply_back[:160]}..."')
 
     ok2 = await hub.send_to_agent(
@@ -245,8 +241,6 @@ async def run_test():
         if alpha_replies:
             break
         await asyncio.sleep(0.35 if not use_mock else 0.2)
-
-    got_response = bool(beta_replies) and bool(alpha_replies)
 
     # ──────────────────────────────────────────────────────────────
     # 9. Verify results — we want real LLM generations in BOTH directions

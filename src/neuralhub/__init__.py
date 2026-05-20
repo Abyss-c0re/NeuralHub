@@ -1,11 +1,17 @@
 """
-NeuralHub — Multi-agent coordination and communication layer for NeuralCore.
+NeuralHub — WebSocket + Local multi-agent coordination layer for NeuralCore.
 
-Provides AgentHub for registering multiple NeuralCore agents, starting per-agent
-WebSocket bridges, and a central hub server for inter-agent message routing,
-broadcast, status queries, and monitoring.
+Public API:
+- AgentHub   : The classic, batteries-included WebSocket + local hub (fully backward compatible)
+- NeuralHub  : The new modular, transport-composable coordinator
+- AgentIdentity : Stable agent identity (friendly IDs + optional cryptographic material)
 """
 
-from .hub import AgentHub
+from .hub import AgentHub, NeuralHub
+from .core.identity import AgentIdentity
 
-__all__ = ["AgentHub"]
+__all__ = [
+    "AgentHub",
+    "NeuralHub",
+    "AgentIdentity",
+]
