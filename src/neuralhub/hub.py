@@ -358,6 +358,16 @@ class NeuralHub:
         self._started = False
         logger.info("[NeuralHub] Stopped")
 
+    async def shutdown(self) -> None:
+        """Shut down all registered agents' internal background work (BackgroundManager etc.)."""
+        for aid, reg in list(self.registry._by_id.items()):
+            if reg.local_agent:
+                try:
+                    await reg.local_agent.shutdown()
+                except Exception as e:
+                    logger.warning(f"Error shutting down agent {aid}: {e}")
+        await self.stop()
+
     # ------------------------------------------------------------------ #
     # deploy_all is intentionally kept minimal here.
     # The rich version that knows about NeuralVoid runners lives in AgentHub.

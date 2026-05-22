@@ -195,4 +195,14 @@ class HeadlessAgentRunner:
             return False
         finally:
             self._write_status("stopped")
+
+            # Ensure the agent's internal background manager (watchers, training jobs, etc.)
+            # is shut down. This prevents orphaned background processes after Ctrl+C or normal exit.
+            try:
+                if hasattr(self.agent, "shutdown"):
+                    # Run shutdown in a best-effort way if we're in a finally
+                    asyncio.create_task(self.agent.shutdown())
+            except Exception:
+                pass
+
             # Bridge cleanup now lives inside _iter_agent_events (its finally)
