@@ -44,7 +44,7 @@ class NeuralHub:
         await hub.delegate_local_task("alpha", "beta", "do X")
         await hub.orchestrate_local_split("alpha", "Complex goal...", ["beta", "gamma"])
 
-    These use Agent.request_agent + TaskManager (plan + dispatch_parallel) under the hood.
+    These use Agent.request_agent + TaskExecutor (plan + dispatch_parallel) under the hood.
     WebSocket paths remain fully functional when the flags are left at their default (True).
     """
 
@@ -186,7 +186,7 @@ class NeuralHub:
         }
 
     # ------------------------------------------------------------------ #
-    # Local-only cooperation (core methods + TaskManager task splitting)
+    # Local-only cooperation (core methods + TaskExecutor task splitting)
     # These paths never touch WebSocketTransport or any network layer.
     # ------------------------------------------------------------------ #
 
@@ -195,7 +195,7 @@ class NeuralHub:
         Return the live in-process Agent object for a locally registered agent.
 
         This is the gateway for direct core-method cooperation (request_agent,
-        task_manager, etc.) between agents that live in the same Python process.
+        TaskExecutor, etc.) between agents that live in the same Python process.
         """
         return self.get_agent(agent_id)
 
@@ -246,8 +246,9 @@ class NeuralHub:
             drain_context=drain_context,
         )
 
-        # Target executes using its own TaskManager (full tool use, validation, etc.)
-        await target.task_manager.execute_delegated(task)
+        # Target executes using the relocated TaskExecutor (full tool use, validation, etc.)
+        from .tasks.manager import TaskExecutor
+        await TaskExecutor(target).execute_delegated(task)
 
         # Requester waits via the task's completion event
         result = await requester.await_task_completion(task, timeout=timeout)
@@ -266,14 +267,14 @@ class NeuralHub:
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
-        End-to-end local multi-agent orchestration using TaskManager for splitting.
+        End-to-end local multi-agent orchestration using TaskExecutor for splitting.
 
-        1. The orchestrator's TaskManager.plan() decomposes `goal` into sub-tasks.
+        1. The orchestrator's TaskExecutor.plan() decomposes `goal` into sub-tasks.
         2. Those tasks are dispatched (respecting dependencies) via
-           orchestrator.task_manager.dispatch_parallel(...) to the participant agents.
+           TaskExecutor(orchestrator).dispatch_parallel(...) to the participant agents.
         3. dispatch_parallel internally uses request_agent + execute_delegated.
 
-        This is the "local agent without websockets + task manager splits tasks" path.
+        This is the "local agent without websockets + task executor splits tasks" path.
 
         If participant_ids is None, all other locally registered agents are used.
         """
@@ -303,9 +304,10 @@ class NeuralHub:
         orchestrator.state.task = goal
         orchestrator.current_task = goal
 
-        # Phase 1: Planning (TaskManager uses LLM to split the goal)
+        # Phase 1: Planning (TaskExecutor uses LLM to split the goal)
         logger.info(f"[NeuralHub] orchestrate_local_split: planning goal for '{orchestrator_id}'")
-        async for event, _payload in orchestrator.task_manager.plan():
+        from .tasks.manager import TaskExecutor
+        async for event, _payload in TaskExecutor(orchestrator).plan():
             if event in ("planning_complete", "planning_fallback"):
                 break
 
@@ -322,7 +324,7 @@ class NeuralHub:
 
         # Phase 2: Parallel dispatch with dependency handling (core path)
         dispatch_events: List[tuple] = []
-        async for ev in orchestrator.task_manager.dispatch_parallel(
+        async for ev in TaskExecutor(orchestrator).dispatch_parallel(
             tasks=tasks, agents=participants, timeout=timeout
         ):
             dispatch_events.append(ev)

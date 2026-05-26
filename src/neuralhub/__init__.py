@@ -6,7 +6,7 @@ Supports two equally-first-class modes:
 * WebSocket mode (classic): AgentHub() gives the full bridge + central hub server (ports 8770+).
 * Pure local mode: NeuralHub() or AgentHub(enable_central_hub=False, enable_agent_bridges=False)
   — zero listening sockets. Use get_local_agent / delegate_local_task / orchestrate_local_split
-  for direct core-method cooperation + TaskManager task splitting.
+  for direct core-method cooperation + TaskExecutor task splitting.
 
 The two flags on AgentHub/WebSocketTransport are independent:
     enable_central_hub      → controls the main hub server (relay/broadcast/status for external clients)
@@ -21,6 +21,8 @@ from .hub import AgentHub, NeuralHub
 from .core.identity import AgentIdentity
 from .runners.headless_runner import HeadlessAgentRunner
 from .bridge.websocket import WebSocketBridge
+from .tasks.manager import TaskExecutor
+from .utils.prompt_builder import PromptBuilder as HubPromptBuilder
 
 __all__ = [
     "AgentHub",
@@ -28,4 +30,6 @@ __all__ = [
     "AgentIdentity",
     "HeadlessAgentRunner",
     "WebSocketBridge",
+    "TaskExecutor",
+    "HubPromptBuilder",
 ]
