@@ -47,10 +47,18 @@ class TaskExecutor(CoreTaskExecutor):
     Adds all planning/goal-driven/dispatch logic that lives exclusively in the hub.
 
     This removes the previous duplicate implementation of execute_delegated.
+
+    DynamicCore integration:
+      - When the agent has a dynamic_core, the TaskExecutor can consult it
+        during planning and when the agent is stuck in repeated failures.
+      - This enables high-level workflow decisions (plan_next_workflow_phase,
+        insert_reflection_step, mark_workflow_dead_end, etc.) to influence
+        task decomposition and execution strategy.
     """
 
     def __init__(self, agent):
         self.agent = agent
+        self.dynamic_core = getattr(agent, "dynamic_core", None)
 
     async def plan(self) -> AsyncIterator[Tuple[str, Any]]:
         """Plan a task decomposition using the LLM.
@@ -75,6 +83,13 @@ class TaskExecutor(CoreTaskExecutor):
 
             plan = json.loads(plan_text.strip())
             steps: List[Dict] = plan.get("steps", [])
+
+            # === DynamicCore Integration in Planning ===
+            if self.dynamic_core and self.dynamic_core.is_enabled():
+                logger.info("[DYNAMIC_CORE] Reviewing LLM plan at high level before task creation")
+                # In a more complete version this would call plan_next_workflow_phase or similar.
+                # For now we just log that DynamicCore had visibility into the plan.
+                # Future: let DynamicCore return suggested phase adjustments.
 
             if hasattr(self.agent, "consolidator") and self.agent.consolidator:
                 for step in steps:
@@ -408,6 +423,21 @@ class TaskExecutor(CoreTaskExecutor):
         if action_restart_triggered and action_continuation:
             state.increment_action_restart()
             if state.action_restarts > 3:
+                # === DynamicCore Integration Point (repeated action failures) ===
+                if self.dynamic_core and self.dynamic_core.is_enabled():
+                    logger.info("[DYNAMIC_CORE] Repeated action failures detected → high-level workflow decision recommended")
+                    self.dynamic_core.maybe_replan(
+                        trigger="repeated_action_failures",
+                        task=getattr(state, "task", ""),
+                        failure_context=f"action_restarts={state.action_restarts}"
+                    )
+                    state.request_loop_restart(
+                        reason="DynamicCore replan requested after repeated action failures",
+                        target_loop=target_loop
+                    )
+                    yield ("phase_changed", {"phase": "restarting_loop"})
+                    return
+
                 state.mark_goal_achieved("Max action restarts reached")
                 state.request_loop_stop(
                     reason="Max action restarts reached", target_loop=target_loop
@@ -425,6 +455,22 @@ class TaskExecutor(CoreTaskExecutor):
         ):
             state.increment_empty_loop()
             if state.empty_loops >= 5:
+                # === DynamicCore Integration Point ===
+                if self.dynamic_core and self.dynamic_core.is_enabled():
+                    logger.info("[DYNAMIC_CORE] Agent stuck in empty loops → triggering high-level replan")
+                    self.dynamic_core.maybe_replan(
+                        trigger="task_stuck_empty_loops",
+                        task=getattr(state, "task", ""),
+                        failure_context=f"empty_loops={state.empty_loops}"
+                    )
+                    # Surface the decision tools more strongly in next context
+                    state.request_loop_restart(
+                        reason="DynamicCore high-level replan requested due to empty loops",
+                        target_loop=target_loop
+                    )
+                    yield ("phase_changed", {"phase": "restarting_loop"})
+                    return
+
                 state.mark_goal_achieved("Forced completion after empty loops")
                 state.request_loop_stop(
                     reason="Forced completion after empty loops",

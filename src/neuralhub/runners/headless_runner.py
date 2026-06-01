@@ -51,9 +51,11 @@ class HeadlessAgentRunner:
         status_update_throttle_sec: float = 1.0,
         skip_bridge: bool = False,
         app_root: Path | None = None,
+        render_events: bool = False,
     ):
         self.agent = agent
         self.app_root = app_root or getattr(agent, "app_root", None) or Path.cwd()
+        self.render_events = bool(render_events)
 
         # Default status/pid paths relative to the app root for cleanliness
         default_status = self.app_root / ".neuralvoid" / f"{agent.agent_id}.status.json"
@@ -196,13 +198,18 @@ class HeadlessAgentRunner:
         finally:
             self._write_status("stopped")
 
-            # Ensure the agent's internal background manager (watchers, training jobs, etc.)
-            # is shut down. This prevents orphaned background processes after Ctrl+C or normal exit.
+            # Best-effort structured shutdown. We try to await it with a timeout so
+            # that even if background jobs (DynamicCore replans, KB watchers, etc.)
+            # are slow to stop, we don't hang the whole process forever.
             try:
                 if hasattr(self.agent, "shutdown"):
-                    # Run shutdown in a best-effort way if we're in a finally
-                    asyncio.create_task(self.agent.shutdown())
-            except Exception:
+                    # Run with a hard timeout so Ctrl+C never leaves the user waiting indefinitely.
+                    await asyncio.wait_for(self.agent.shutdown(), timeout=8.0)
+            except asyncio.TimeoutError:
+                logger.warning(f"[HeadlessRunner] agent.shutdown() timed out after 8s — some background work may still be running.")
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                logger.warning(f"[HeadlessRunner] Error during agent.shutdown() in finally: {e}")
 
             # Bridge cleanup now lives inside _iter_agent_events (its finally)
